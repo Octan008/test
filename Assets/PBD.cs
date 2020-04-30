@@ -2,9 +2,29 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// public class Constraint{
+/* 参考 */
+//原著
+//https://matthias-research.github.io/pages/publications/posBasedDyn.pdf
 
-// }
+//翻訳(あまりよくわからない)
+//https://github.com/nobuo-nakagawa/pbd_jp/blob/master/posbaseddyn_jp.pdf
+
+//解説(実装にはあんまり役立たず)
+//https://qiita.com/doRA9876/items/0f2c79204f2412c0f7a3
+
+//解説(英語)
+//https://www.youtube.com/watch?v=fH3VW9SaQ_c
+
+//実装の足がかり
+//https://qiita.com/notargs/items/7857c70d4c82dd4eac70
+
+//ニュートン法
+//http://www.ep.sci.hokudai.ac.jp/~gfdlab/comptech/y2011/resume/0526/2011_0526-ogihara.pdf
+
+//数学
+//https://eman-physics.net/math/taylor_multi.html
+// /https://eman-physics.net/math/taylor.html
+//https://qiita.com/edo_m18/items/c8808f318f5abfa8af1e
 
 public class PBD : MonoBehaviour
 {   
@@ -31,15 +51,12 @@ public class PBD : MonoBehaviour
     List<(GameObject, GameObject,float)> Ms = new List<(GameObject, GameObject, float)>();
     bool[] check;
 
-    void Collect_Ms(
-        int limx, int limy, int limz, GameObject start
-    ){
-      
+    //無駄に分けてる
+    void Collect_Ms(int limx, int limy, int limz, GameObject start){      
         Collect_Ms_recursive(limx, limy, limx, start);
     }
-    void Collect_Ms_recursive(
-        int limx, int limy, int limz, GameObject start
-    ){
+    //格子状に並んだ質点に対して、6方向の隣接質点との拘束を作成する
+    void Collect_Ms_recursive(int limx, int limy, int limz, GameObject start){
         int x = int.Parse(start.name[0].ToString());
         int y = int.Parse(start.name[1].ToString());
         int z = int.Parse(start.name[2].ToString());
@@ -113,16 +130,18 @@ public class PBD : MonoBehaviour
     //速度
     Dictionary<GameObject, Vector3> Velocity= new Dictionary<GameObject, Vector3>();
 
-    Vector3 SolveCollide_Plane( KeyValuePair<GameObject, (Vector3 p, Vector3 qc, Vector3 nc)> Mcoll){
-        Vector3 p = Mcoll.Value.p; Vector3 qc = Mcoll.Value.qc; Vector3 nc = Mcoll.Value.nc;
+    /************/
+    /* 関数定義 */
+    /***********/
 
-        return -(Vector3.Dot(p-qc, nc)/Vector3.Dot(nc, nc)) * nc;
-    }
-
-
+    //int → gameobject の変換をするだけの関数
     GameObject mp(int i){
         return this.transform.GetChild(i).gameObject;
     }
+
+
+    /*  衝突関係 */
+    // 地面との衝突判定
     bool if_Collide_Plane(GameObject Plane, Vector3 x, Vector3 p){
         //static
         if(x.y < Plane.transform.position.y){
@@ -136,6 +155,15 @@ public class PBD : MonoBehaviour
             return false;
         }
     }
+
+    //地面との衝突解決
+    Vector3 SolveCollide_Plane( KeyValuePair<GameObject, (Vector3 p, Vector3 qc, Vector3 nc)> Mcoll){
+        Vector3 p = Mcoll.Value.p; Vector3 qc = Mcoll.Value.qc; Vector3 nc = Mcoll.Value.nc;
+
+        return -(Vector3.Dot(p-qc, nc)/Vector3.Dot(nc, nc)) * nc;
+    }
+
+    //論文中のqc, または qs の発見
     Vector3 detect_qc(GameObject Plane, Vector3 x, Vector3 p){
         //static
         if(x.y < Plane.transform.position.y){
@@ -152,6 +180,10 @@ public class PBD : MonoBehaviour
             return x + rate*m;
         }
     }
+
+    /* 地面との幾何拘束 */
+
+    //拘束違反検知
     bool ViolateGeometry_Plane(GameObject Plane, GameObject Sphere, Vector3 p){
         if(Plane.transform.position.y > p.y - (Sphere.transform.localScale.x)/2){
             Debug.Log("Violate");
@@ -161,6 +193,8 @@ public class PBD : MonoBehaviour
             return false;
         }
     }
+
+    //拘束違反解決
     Vector3 SolveGeometry_Plane(GameObject Plane, GameObject Sphere, Vector3 p){
         float k = k_ground;
 
@@ -169,27 +203,25 @@ public class PBD : MonoBehaviour
         float d = Sphere.transform.localScale.x;
         Vector3 dp1;
         if((p1-p2).magnitude != 0){
-             dp1= -((p1-p2).magnitude - d) * ( (p1-p2) / (p1-p2).magnitude);
+            //すでに解いてある式を使うだけ
+            dp1= -((p1-p2).magnitude - d) * ( (p1-p2) / (p1-p2).magnitude);
         }
         else{
+            //質点が重なってしまっている場合、距離が0になってしまうので計算ができない
             //これどうするんだ？
             dp1= -((p1-p2).magnitude - d) * Vector3.up;
         }
         return dp1*k;
     }
 
-    // bool ViolateGeometry_Dist(Vector3 p1, Vector3 p2 ,float d){
-    //     return true;
-    //     // float d = 1.5f;        
-    //     if((p1-p2).magnitude < d){
-    //         Debug.Log("Violate");
-    //         return true;
-    //     }
-    //     else{
-    //         return false;
-    //     }
-    // }
+    /* 質点同士の拘束 */
+    
+    //違反検知
     bool ViolateGeometry_Dist(Vector3 p1, Vector3 p2 ,float d){ 
+        // 剛体の場合常にtrue;
+        // return true;
+
+        //自然長の前後一定割合の長さまで許容
         if((p1-p2).magnitude < d*(1.0f-el) || d*(1.0f+el) < (p1-p2).magnitude){
             Debug.Log("Violate");
             return true;
@@ -198,37 +230,25 @@ public class PBD : MonoBehaviour
             return false;
         }
     }
-    // (Vector3, Vector3) SolveGeometry_Dist(Vector3 p1, Vector3 p2, float d){
-    //     float k = k_dist;
 
-    //     // float d = 1.5f;
-    //     Vector3 dp1;
-    //     Vector3 dp2;
-    //     if((p1-p2).magnitude != 0){
-    //         dp1= -((p1-p2).magnitude - d) * 0.5f * ( (p1-p2) / (p1-p2).magnitude);
-    //         dp2= ((p1-p2).magnitude - d) * 0.5f * ( (p1-p2) / (p1-p2).magnitude);
-    //     }
-    //     else{
-    //         //これどうするんだ？
-    //         Debug.Log("warning");
-    //         dp1= -((p1-p2).magnitude - d) * Vector3.up;
-    //         dp2= -((p1-p2).magnitude - d) * Vector3.down;
-    //     }
-    //     return (dp1*k, dp2*k);
-    // }
+    //違反解決
     (Vector3, Vector3) SolveGeometry_Dist(Vector3 p1, Vector3 p2, float d){
+        //stiffness
         float k = k_dist;
+
+        //距離が短すぎるのか長すぎるのかによってdを決定
         if((p1-p2).magnitude < d*(1.0f-el)) d = d*(1.0f-el);
         else d =d*(1.0f+el);
 
-        // float d = 1.5f;
-        Vector3 dp1;
-        Vector3 dp2;
+
+        Vector3 dp1; Vector3 dp2;
         if((p1-p2).magnitude != 0){
+            //すでに解いてある式を使うだけ
             dp1= -((p1-p2).magnitude - d) * 0.5f * ( (p1-p2) / (p1-p2).magnitude);
             dp2= ((p1-p2).magnitude - d) * 0.5f * ( (p1-p2) / (p1-p2).magnitude);
         }
         else{
+            //質点が重なってしまっている場合、距離が0になってしまうので計算ができない
             //これどうするんだ？
             Debug.Log("warning");
             dp1= -((p1-p2).magnitude - d) * Vector3.up;
@@ -244,24 +264,26 @@ public class PBD : MonoBehaviour
             previousPos.Add(mp(i), mp(i).transform.position);
         }
 
+        //距離拘束の生成
         string LastName=mp(this.transform.childCount-1).gameObject.name;
         check = new bool[this.transform.childCount];
-        for(int i=0; i<check.Length; i++) check[i] = false;
-
+        for(int i=0; i<check.Length; i++) check[i] = false;      
         Collect_Ms(int.Parse(LastName[0].ToString()),
                     int.Parse(LastName[1].ToString()),
                         int.Parse(LastName[2].ToString()),
                                                         mp(0));  
 
+        /* デバッグ */
         // foreach( (GameObject, GameObject, float) M in Ms){
         //     Debug.Log(M.Item1.name+", "+M.Item2.name+", "+M.Item3);
         // }
-
+        /* デバッグ */
     }
 
     // Update is called once per frame
     void Update()
     {
+        //デバッグ
         // foreach( (GameObject, GameObject, float) M in Ms){
         //     Debug.Log(M.Item1.name+", "+M.Item2.name+", "+
         //         (M.Item1.transform.position - M.Item2.transform.position).magnitude+", "+
@@ -309,10 +331,10 @@ public class PBD : MonoBehaviour
         Dictionary<GameObject, (Vector3 p, Vector3 qc, Vector3 nc)> Mcolls =
                              new Dictionary<GameObject, (Vector3 p, Vector3 qc, Vector3 nc)>();
         for(int i=0; i< this.transform.childCount; i++){
-            if(
-                if_Collide_Plane(Ground, defaultPos[mp(i)], predictPos[mp(i)])
-            )
+            //地面と質点の衝突のみ
+            if(if_Collide_Plane(Ground, defaultPos[mp(i)], predictPos[mp(i)]))
             {
+                //拘束条件を追加
                 Mcolls.Add(
                     mp(i), 
                     (
@@ -326,26 +348,26 @@ public class PBD : MonoBehaviour
 
         //newton法
         bool flag=true;
-        
         int count = 0;
         
         while(flag){
             count+=1;
             Dictionary<GameObject, Vector3> prev_predictPos = new Dictionary<GameObject, Vector3>(predictPos);
-            //衝突拘束
+
+
+            /* 衝突拘束 */
             foreach( KeyValuePair<GameObject, (Vector3 p, Vector3 qc, Vector3 nc)> Mcoll in Mcolls){
                 if(if_Collide_Plane(Ground, defaultPos[Mcoll.Key], predictPos[Mcoll.Key])){
                     deltaPos[Mcoll.Key] = SolveCollide_Plane(Mcoll);
                     predictPos[Mcoll.Key]  += deltaPos[Mcoll.Key];
                 }
             }
-            // //更新
+            // //更新、deltaPを出す毎に予想位置を更新することにしたため今は削除
             // for(int i=0; i< this.transform.childCount; i++){
             //     predictPos[mp(i)]  += deltaPos[mp(i)];
             // }
 
-            //幾何拘束
-            //これ本当に質点ごとでいいの？
+            /* 幾何拘束、地面と質点 */
             for(int i=0; i< this.transform.childCount; i++){
                 if(ViolateGeometry_Plane(Ground, mp(i), predictPos[mp(i)])){
                     deltaPos[mp(i)] = SolveGeometry_Plane(
@@ -354,11 +376,15 @@ public class PBD : MonoBehaviour
                     predictPos[mp(i)]  += deltaPos[mp(i)];
                 }
             }
-            // //更新
+            // //更新、deltaPを出す毎に予想位置を更新することにしたため今は削除
             // for(int i=0; i< this.transform.childCount; i++){
             //     predictPos[mp(i)]  += deltaPos[mp(i)];
             // }
+
+            /* 幾何拘束、質点同士 */
             foreach( (GameObject, GameObject, float) M in Ms){
+
+                //拘束ごとに解いていく
                 if(ViolateGeometry_Dist(
                     predictPos[M.Item1], predictPos[M.Item2], M.Item3
                     )){
@@ -375,24 +401,26 @@ public class PBD : MonoBehaviour
             }   
             
 
-            //判定
+            /* ループ終了判定 */
             float e = 0.1f;
             flag=false;
+
+            //重くなりすぎないように、セーフティ
             if(count > 10){
                 Debug.Log("Clash");
                 break;
             }
+
+            //予想位置の更新量が一定以下になれば終了
             for(int i=0; i< this.transform.childCount; i++){
-                // Debug.Log(predictPos[mp(i)] - prev_predictPos[mp(i)]);
                 if((predictPos[mp(i)] - prev_predictPos[mp(i)]).magnitude > e){
-                    // Debug.Log("繰り返します");
                     flag=true;
                     break;
                 }
             }
         }
 
-        //最終反映
+        //最終的な位置反映
         Debug.Log("count:"+count);
         for(int i=0; i< this.transform.childCount; i++){
             defaultPos[mp(i)]=predictPos[mp(i)];
